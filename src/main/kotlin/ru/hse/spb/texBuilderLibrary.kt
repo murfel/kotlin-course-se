@@ -3,183 +3,150 @@ package ru.hse.spb
 import java.io.OutputStream
 import java.io.OutputStreamWriter
 
-enum class AlignmentOption(val option: String) {
-    FLUSHLEFT("flushleft"),
-    CENTER("center"),
-    FLUSHRIGHT("flushright")
-}
+enum class AlignmentOption {
+    FlushLeft,
+    Center,
+    FlushRight;
 
-interface Element {
-    fun toOutputStream(outputStream: OutputStream)
-    fun toWriter(writer: OutputStreamWriter, indent: String)
-}
-
-abstract class Command(val name: String) : Element {
-    val indentStep = "    "
-    val children = arrayListOf<Element>()
-    val attributes = hashMapOf<String, String>()
-
-    protected fun <T : Element> initTag(tag: T, init: T.() -> Unit): T {
-        children.add(tag)
-        tag.init()
-//        println(tag.javaClass)
-//        println(children)
-        return tag
+    override fun toString(): String {
+        return name.toLowerCase()
     }
+}
 
-    override fun toOutputStream(outputStream: OutputStream) {
+abstract class Element {
+    val indentStep = "    "
+    fun toOutputStream(outputStream: OutputStream) {
         val writer = OutputStreamWriter(outputStream)
         toWriter(writer, "")
         writer.close()
     }
+
+    abstract fun toWriter(writer: OutputStreamWriter, indent: String)
 }
 
-class Latex : Command("Latex") {
+class TextElement(val text: String) : Element() {
+    override fun toWriter(writer: OutputStreamWriter, indent: String) {
+        writer.write("$text\n")
+    }
+}
+
+abstract class ElementWithChildren : Element() {
+    val children = arrayListOf<Element>()
+    protected fun <T : Element> initTag(tag: T, init: T.() -> Unit): T {
+        children.add(tag)
+        tag.init()
+        return tag
+    }
+}
+
+abstract class ElementWithNameAndTextChildren(val name: String) : ElementWithChildren() {
+    operator fun String.unaryPlus() {
+        children.add(TextElement(this))
+    }
+}
+
+class Item(val bullet: String? = null) : ElementWithNameAndTextChildren("item") {
+    override fun toWriter(writer: OutputStreamWriter, indent: String) {
+        writer.write("$indent\\$name")
+        if (bullet != null) {
+            writer.write("[$bullet]")
+        }
+        writer.write(" ")
+        for (child in children) {
+            child.toWriter(writer, "")
+        }
+    }
+}
+
+abstract class Command(name: String, val argument: String? = null, vararg val options: String) :
+        ElementWithNameAndTextChildren(name) {
+    override fun toWriter(writer: OutputStreamWriter, indent: String) {
+        writer.write("${indent}\\$name")
+        if (options.isNotEmpty()) {
+            writer.write("[${options.joinToString(", ")}]")
+        }
+        if (argument != null) {
+            writer.write("{$argument}\n")
+        }
+    }
+}
+
+abstract class Environment(name: String, val argument: String? = null, vararg val options: String) :
+        ElementWithNameAndTextChildren(name) {
+    override fun toWriter(writer: OutputStreamWriter, indent: String) {
+        writer.write("${indent}\\begin{$name}")
+        if (options.isNotEmpty()) {
+            writer.write("[${options.joinToString(", ")}]")
+        }
+        if (argument != null) {
+            writer.write("{$argument}")
+        }
+        writer.write("\n")
+        for (child in children) {
+            child.toWriter(writer, indent + indentStep)
+        }
+        writer.write("${indent}\\end{$name}\n")
+    }
+
+    fun frame(frameTitle: String? = null, vararg options: String, init: Frame.() -> Unit) =
+            initTag(Frame(frameTitle, *options), init)
+
+    fun math(init: Math.() -> Unit) = initTag(Math(), init)
+    fun alignment(alignmentOption: AlignmentOption, init: Alignment.() -> Unit) =
+            initTag(Alignment(alignmentOption), init)
+
+    fun customTag(customEnvironmentName: String, argument: String? = null, vararg options: String,
+                  init: CustomEnvironment.() -> Unit) =
+            initTag(CustomEnvironment(customEnvironmentName, argument, *options), init)
+
+    fun itemize(vararg options: String, init: Itemize.() -> Unit) = initTag(Itemize(*options), init)
+    fun enumerate(vararg options: String, init: Enumerate.() -> Unit) = initTag(Enumerate(*options), init)
+}
+
+abstract class EnvironmentWithItems(name: String, vararg options: String) : Environment(name, options = *options) {
+    fun item(init: Item.() -> Unit) = initTag(Item(), init)
+}
+
+class Latex : ElementWithChildren() {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
         for (child in children) {
             child.toWriter(writer, indent)
         }
     }
 
-    fun documentClass(className: String): DocumentClass {
-        val documentClassObject = DocumentClass("beamer")
-        children.add(documentClassObject)
-        return documentClassObject
-    }
+    fun document(init: Document.() -> Unit) = initTag(Document(), init)
+    fun documentClass(documentClassName: String, vararg options: String) =
+            initTag(DocumentClass(documentClassName, *options), {})
 
-    fun usepackage(packageName: String, vararg packageOptions: String) = initTag(Usepackage(packageName, *packageOptions), {})
-
-    fun document(init: Document.() -> Unit): Document = initTag(Document(), init)
+    fun usepackage(packageName: String, vararg options: String) = initTag(UsePackage(packageName, *options), {})
 }
 
-class Document : Command("Document") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("$indent\\begin{document}\n")
-        for (child in children) {
-            child.toWriter(writer, indentStep + indent)
-        }
-        writer.write("$indent\\end{document}\n")
-    }
+class Document : Environment("document")
 
-    fun frame(frameTitle: String, vararg arguments: String, init: Frame.() -> Unit) = initTag(Frame(frameTitle, *arguments), init)
+class DocumentClass(documentClassName: String, vararg options: String) :
+        Command("documentclass", documentClassName, *options)
 
-    fun itemize(vararg arguments: String, init: Itemize.() -> Unit) = initTag(Itemize(*arguments), init)
+class UsePackage(packageName: String, vararg options: String) : Command("usepackage", packageName, *options)
 
-    fun item(init: Item.() -> Unit) = initTag(Item(), init)
+class Frame(frameTitle: String? = null, vararg options: String) : Environment("frame", frameTitle, *options)
 
-    fun customTag(name: String, vararg arguments: String, init: CustomTag.() -> Unit) = initTag(CustomTag(name, *arguments), init)
+class Math : Environment("math")
 
-    fun enumerate(init: Enumerate.() -> Unit) = initTag(Enumerate(), init)
+class Alignment(alignmentOption: AlignmentOption) : Environment(alignmentOption.toString())
 
-    fun math(init: Math.() -> Unit) = initTag(Math(), init)
+class Itemize(vararg options: String) : EnvironmentWithItems("itemize", *options)
 
-    fun alignment(alignmentOption: AlignmentOption, init: Alignment.() -> Unit) = initTag(Alignment(alignmentOption), init)
-}
+class Enumerate(vararg options: String) : EnvironmentWithItems("enumerate", *options)
 
-class DocumentClass(val className: String) : Command("documentClass") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\documentclass{$className}\n")
-    }
-}
-
-class Usepackage(val packageName: String, vararg val packageOptions: String) : Command("usepackage") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\usepackage")
-        if (!packageOptions.isEmpty()) {
-            writer.write("[${packageOptions.joinToString(", ")}]")
-        }
-        writer.write("{$packageName}\n")
-    }
-}
-
-class Frame(val frameTitle: String, vararg val arguments: String) : Command("Frame") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{frame}")
-        if (!arguments.isEmpty()) {
-            writer.write("[${arguments.joinToString(", ")}]\n")
-        }
-        writer.write("${indent + indentStep}\\frametitle{$frameTitle}\n")
-        for (child in children) {
-            child.toWriter(writer, indentStep + indent)
-        }
-        writer.write("${indent}\\end{frame}\n")
-    }
-}
-
-class Itemize(vararg arguments: String) : Command("itemize") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{itemize}\n")
-        for (child in children) {
-            child.toWriter(writer, indentStep + indent)
-        }
-        writer.write("${indent}\\end{itemize}\n")
-    }
-}
-
-class Item : Command("item") {
-    var text = ""
-
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\item $text\n")
-    }
-
-    operator fun String.unaryPlus() {
-        text = this
-    }
-}
-
-class CustomTag(val tagName: String, vararg val arguments: String) : Command("customTag") {
-    var text = ""
-
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{$tagName}")
-        if (!arguments.isEmpty()) {
-            writer.write("[${arguments.joinToString(", ")}]\n")
-        }
-        writer.write("${text}\n")
-        writer.write("${indent}\\end{$tagName}\n")
-    }
-
-    operator fun String.unaryPlus() {
-        text = this
-    }
-}
-
-class Enumerate(vararg arguments: String) : Command("enumerate") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{enumerate}\n")
-        for (child in children) {
-            child.toWriter(writer, indentStep + indent)
-        }
-        writer.write("${indent}\\end{enumerate}\n")
-    }
-}
-
-class Math : Command("enumerate") {
-    var text = ""
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{math}\n")
-        writer.write(text.replace("\n", "\n${indentStep + indent}"))
-        writer.write("${indent}\\end{math}\n")
-    }
-
-    operator fun String.unaryPlus() {
-        text = this
-    }
-}
-
-class Alignment(val alignmentOption: AlignmentOption) : Command("enumerate") {
-    override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{$alignmentOption}\n")
-        for (child in children) {
-            child.toWriter(writer, indentStep + indent)
-        }
-        writer.write("${indent}\\end{$alignmentOption}\n")
-    }
-}
+class CustomEnvironment(customEnvironmentName: String, argument: String? = null, vararg options: String) :
+        Environment(customEnvironmentName, argument, *options)
 
 fun latex(init: Latex.() -> Unit): Latex {
     val latex = Latex()
     latex.init()
     return latex
+}
+
+infix fun String.to(rightOperand: String): String {
+    return "$this=$rightOperand"
 }
