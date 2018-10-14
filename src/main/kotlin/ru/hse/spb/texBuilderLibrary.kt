@@ -95,8 +95,8 @@ abstract class Environment(name: String, val argument: String? = null, vararg va
     fun alignment(alignmentOption: AlignmentOption, init: Alignment.() -> Unit) =
             initTag(Alignment(alignmentOption), init)
 
-    fun customTag(customEnvironmentName: String, argument: String? = null, vararg options: String,
-                  init: CustomEnvironment.() -> Unit) =
+    fun customEnvironment(customEnvironmentName: String, argument: String? = null, vararg options: String,
+                          init: CustomEnvironment.() -> Unit) =
             initTag(CustomEnvironment(customEnvironmentName, argument, *options), init)
 
     fun itemize(vararg options: String, init: Itemize.() -> Unit) = initTag(Itemize(*options), init)
