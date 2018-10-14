@@ -45,6 +45,14 @@ abstract class ElementWithNameAndTextChildren(val name: String) : ElementWithChi
     }
 }
 
+/**
+ * Item is a switch command in Latex.
+ *
+ * This library doesn't implement a general representation for a switch command for simplicity.
+ *
+ * The item switch command can have text children. This behaviour doesn't exactly mimic the Latex syntax but it is
+ * adapted for simplicity.
+ */
 class Item(val bullet: String? = null) : ElementWithNameAndTextChildren("item") {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
         writer.write("$indent\\$name")
@@ -58,6 +66,15 @@ class Item(val bullet: String? = null) : ElementWithNameAndTextChildren("item") 
     }
 }
 
+/**
+ * A command is a Latex command in the form of:
+ * \commandname[option1,option2,...]{argument}
+ *
+ * In Latex, commands can have multiple arguments in the form of {argument1}{argument2}...
+ * but this feature is ingored for simplicity.
+ *
+ * A command cannot have children commands.
+ */
 abstract class Command(name: String, val argument: String? = null, vararg val options: String) :
         ElementWithNameAndTextChildren(name) {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
@@ -71,6 +88,17 @@ abstract class Command(name: String, val argument: String? = null, vararg val op
     }
 }
 
+/**
+ * An environment is a Latex command in the form of:
+ * \begin{environmentName}[option1,option2, ...]{argument}
+ *      ...
+ * \end{environmentName}
+ *
+ * In Latex, environments can have multiple arguments in the form of {argumnet1}{argumnet2}...
+ * but this feature is ingored for simplicity.
+ *
+ * The ... can be replaced by child commands out of frame, math, alignment, customEnvironment, itemize, enumerate.
+ */
 abstract class Environment(name: String, val argument: String? = null, vararg val options: String) :
         ElementWithNameAndTextChildren(name) {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
@@ -103,10 +131,18 @@ abstract class Environment(name: String, val argument: String? = null, vararg va
     fun enumerate(vararg options: String, init: Enumerate.() -> Unit) = initTag(Enumerate(*options), init)
 }
 
+/**
+ * An environment with items can contain the \item command as a child.
+ *
+ * Enumerate, and Itemize are examples of such environments.
+ */
 abstract class EnvironmentWithItems(name: String, vararg options: String) : Environment(name, options = *options) {
     fun item(init: Item.() -> Unit) = initTag(Item(), init)
 }
 
+/**
+ * An artificial command to indicate the root of a Latex DSL when writing in Kotlin.
+ */
 class Latex : ElementWithChildren() {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
         for (child in children) {
@@ -147,6 +183,11 @@ fun latex(init: Latex.() -> Unit): Latex {
     return latex
 }
 
+/**
+ * The to infix operator should be used in options for commands or environments.
+ *
+ * E.g. "option1" to "option2" translates to the string "option1=option2".
+ */
 infix fun String.to(rightOperand: String): String {
     return "$this=$rightOperand"
 }
