@@ -3,6 +3,9 @@ package ru.hse.spb
 import java.io.OutputStream
 import java.io.OutputStreamWriter
 
+@DslMarker
+annotation class LatexElementMarker
+
 enum class AlignmentOption {
     FlushLeft,
     Center,
@@ -13,6 +16,7 @@ enum class AlignmentOption {
     }
 }
 
+@LatexElementMarker
 abstract class Element {
     val indentStep = "    "
     fun toOutputStream(outputStream: OutputStream) {
@@ -24,7 +28,7 @@ abstract class Element {
     abstract fun toWriter(writer: OutputStreamWriter, indent: String)
 }
 
-class TextElement(val text: String) : Element() {
+class TextElement(private val text: String) : Element() {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
         writer.write("$text\n")
     }
@@ -53,7 +57,7 @@ abstract class ElementWithNameAndTextChildren(val name: String) : ElementWithChi
  * The item switch command can have text children. This behaviour doesn't exactly mimic the Latex syntax but it is
  * adapted for simplicity.
  */
-class Item(val bullet: String? = null) : ElementWithNameAndTextChildren("item") {
+class Item(private val bullet: String? = null) : ElementWithNameAndTextChildren("item") {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
         writer.write("$indent\\$name")
         if (bullet != null) {
@@ -71,14 +75,14 @@ class Item(val bullet: String? = null) : ElementWithNameAndTextChildren("item") 
  * \commandname[option1,option2,...]{argument}
  *
  * In Latex, commands can have multiple arguments in the form of {argument1}{argument2}...
- * but this feature is ingored for simplicity.
+ * but this feature is ignored for simplicity.
  *
  * A command cannot have children commands.
  */
-abstract class Command(name: String, val argument: String? = null, vararg val options: String) :
+abstract class Command(name: String, private val argument: String? = null, private vararg val options: String) :
         ElementWithNameAndTextChildren(name) {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\$name")
+        writer.write("$indent\\$name")
         if (options.isNotEmpty()) {
             writer.write("[${options.joinToString(", ")}]")
         }
@@ -95,14 +99,14 @@ abstract class Command(name: String, val argument: String? = null, vararg val op
  * \end{environmentName}
  *
  * In Latex, environments can have multiple arguments in the form of {argumnet1}{argumnet2}...
- * but this feature is ingored for simplicity.
+ * but this feature is ignored for simplicity.
  *
  * The ... can be replaced by child commands out of frame, math, alignment, customEnvironment, itemize, enumerate.
  */
-abstract class Environment(name: String, val argument: String? = null, vararg val options: String) :
+abstract class Environment(name: String, private val argument: String? = null, vararg val options: String) :
         ElementWithNameAndTextChildren(name) {
     override fun toWriter(writer: OutputStreamWriter, indent: String) {
-        writer.write("${indent}\\begin{$name}")
+        writer.write("$indent\\begin{$name}")
         if (options.isNotEmpty()) {
             writer.write("[${options.joinToString(", ")}]")
         }
@@ -113,7 +117,7 @@ abstract class Environment(name: String, val argument: String? = null, vararg va
         for (child in children) {
             child.toWriter(writer, indent + indentStep)
         }
-        writer.write("${indent}\\end{$name}\n")
+        writer.write("$indent\\end{$name}\n")
     }
 
     fun frame(frameTitle: String? = null, vararg options: String, init: Frame.() -> Unit) =
@@ -152,9 +156,9 @@ class Latex : ElementWithChildren() {
 
     fun document(init: Document.() -> Unit) = initTag(Document(), init)
     fun documentClass(documentClassName: String, vararg options: String) =
-            initTag(DocumentClass(documentClassName, *options), {})
+            initTag(DocumentClass(documentClassName, *options)) {}
 
-    fun usepackage(packageName: String, vararg options: String) = initTag(UsePackage(packageName, *options), {})
+    fun usepackage(packageName: String, vararg options: String) = initTag(UsePackage(packageName, *options)) {}
 }
 
 class Document : Environment("document")
@@ -178,9 +182,7 @@ class CustomEnvironment(customEnvironmentName: String, argument: String? = null,
         Environment(customEnvironmentName, argument, *options)
 
 fun latex(init: Latex.() -> Unit): Latex {
-    val latex = Latex()
-    latex.init()
-    return latex
+    return Latex().apply(init)
 }
 
 /**

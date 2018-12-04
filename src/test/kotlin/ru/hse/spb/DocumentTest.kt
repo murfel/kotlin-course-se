@@ -11,6 +11,21 @@ class DocumentTest {
         assertEquals(expected, outputStream.toString())
     }
 
+//    @Test
+//    fun itemInItemIsSyntaxError() {
+//        latex {
+//            document {
+//                itemize {
+//                    item {
+//                        item {
+//
+//                        }
+//                    }
+//                }
+//            }
+//        }
+//    }
+
     @Test
     fun empty() {
         assertEquals("", latex { })
